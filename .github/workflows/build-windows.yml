@@ -1,0 +1,40 @@
+name: Windows Build
+
+on: [push, workflow_dispatch]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install meson/ninja
+        run: pip install meson ninja
+      
+      - name: Install CUDA
+        uses: Jimver/cuda-toolkit@v0.2.15
+        with:
+          cuda: '12.4.0'
+      
+      - name: Download ONNX Runtime
+        run: |
+          curl -L -o onnxruntime.zip https://github.com/microsoft/onnxruntime/releases/download/v1.17.0/onnxruntime-win-x64-gpu-1.17.0.zip
+          Expand-Archive onnxruntime.zip -DestinationPath onnxruntime
+      
+      - name: Build lc0
+        run: |
+          meson setup build --buildtype=release `
+            -Donnxruntime_include=${{github.workspace}}\onnxruntime\onnxruntime-win-x64-gpu-1.17.0\include `
+            -Donnxruntime_libdir=${{github.workspace}}\onnxruntime\onnxruntime-win-x64-gpu-1.17.0\lib
+          meson compile -C build
+      
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lc0-windows
+          path: build/lc0.exe
