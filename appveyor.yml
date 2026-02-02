@@ -4,23 +4,7 @@ platform: x64
 image:
 - Visual Studio 2019
 environment:
-  matrix:
-  - NAME: onnx-trt
-  - NAME: gpu-nvidia-cudnn
-  - NAME: gpu-nvidia-cuda
-#  - NAME: gpu-dx12
-#  - NAME: gpu-opencl
-  - NAME: cpu-dnnl
-  - NAME: cpu-openblas
-#  - NAME: onednn
-  - NAME: onnx-dml
-  - NAME: android
-for:
--
-  matrix:
-    only:
-#    - NAME: gpu-opencl
-    - NAME: cpu-dnnl
+  NAME: onnx-trt
   skip_non_tags: true
 clone_folder: c:\projects\lc0
 install:
