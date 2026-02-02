@@ -189,6 +189,12 @@ class Search {
   // Cumulative depth of all paths taken in PickNodetoExtend.
   uint64_t cum_depth_ GUARDED_BY(nodes_mutex_) = 0;
 
+  int effective_sclimit_ = 0;
+  static std::atomic<int> last_search_sclimit_;  // Persists across searches
+
+  void InitializeEffectiveSclimit();
+  void InvalidateTree();
+
   std::optional<std::chrono::steady_clock::time_point> nps_start_time_
       GUARDED_BY(counters_mutex_);
 

@@ -162,6 +162,8 @@ class MEvaluator {
 
 }  // namespace
 
+std::atomic<int> Search::last_search_sclimit_{0};
+
 Search::Search(const NodeTree& tree, Network* network,
                std::unique_ptr<UciResponder> uci_responder,
                const MoveList& searchmoves,
@@ -209,6 +211,8 @@ Search::Search(const NodeTree& tree, Network* network,
                            : ContemptMode::WHITE;
     }
   }
+
+  InitializeEffectiveSclimit();
 }
 
 namespace {
@@ -303,6 +307,58 @@ inline double WDLRescale(float& v, float& d, float wdl_rescale_ratio,
   return 0;
 }
 }  // namespace
+
+void Search::InvalidateTree() {
+  LOGFILE << "Invalidating tree due to sclimit change";
+
+  // Release all children of root
+  root_node_->ReleaseChildren();
+
+  // Reset search counters
+  total_playouts_ = 0;
+  initial_visits_ = 0;
+  cum_depth_ = 0;
+  max_depth_ = 0;
+  total_batches_ = 0;
+  current_best_edge_ = EdgeAndNode();
+  nps_start_time_.reset();
+
+  LOGFILE << "Tree invalidated, starting fresh";
+}
+
+void Search::InitializeEffectiveSclimit() {
+  int base_limit = params_.GetScLimit();
+  if (base_limit <= 0) {
+    effective_sclimit_ = 0;
+    return;
+  }
+
+  int max_limit = 4 * base_limit;
+  int new_sclimit;
+
+  if (root_node_->GetN() > 0) {
+    float root_wl = -root_node_->GetWL();
+    int estimate = static_cast<int>(
+        (.25f + (root_wl - 0.75f) / 0.24f * .75f) * max_limit);
+    new_sclimit = std::max(base_limit, std::min(max_limit, estimate));
+  } else {
+    // no evaluation yet, use base limit
+    new_sclimit = base_limit;
+  }
+
+  int previous_sclimit = last_search_sclimit_.load(std::memory_order_acquire);
+
+  if (previous_sclimit != 0 && new_sclimit != previous_sclimit) {
+    LOGFILE << "Sclimit changed from " << previous_sclimit << " to " << new_sclimit;
+    InvalidateTree();
+  }
+
+  effective_sclimit_ = new_sclimit;
+  last_search_sclimit_.store(new_sclimit, std::memory_order_release);
+
+  LOGFILE << "Effective sclimit: " << effective_sclimit_
+          << " (base: " << base_limit << ")";
+}
 
 void Search::SendUciInfo() REQUIRES(nodes_mutex_) REQUIRES(counters_mutex_) {
   const auto max_pv = params_.GetMultiPv();
@@ -1738,7 +1794,7 @@ void SearchWorker::PickNodesToExtendTask(
 
       const bool is_opponent_node = (current_depth % 2 == 1);
 
-      int opponent_node_limit = params_.GetScLimit();
+      int opponent_node_limit = search_->effective_sclimit_;
       int current_node_count = node->GetN();
       bool node_limit_frozen = node->GetNodeLimitFrozen();
       bool node_limit_frozen_lock = node->GetNodeLimitFrozenLock();
